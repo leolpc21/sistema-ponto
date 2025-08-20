@@ -1,4 +1,4 @@
-// public/app.js (código CORRIGIDO para o seletor de anos)
+// public/app.js (código CORRIGIDO para ordenação)
 
 document.addEventListener('DOMContentLoaded', () => {
   const pontoForm = document.getElementById('pontoForm');
@@ -217,6 +217,9 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         anoSelector.value = anoAtual;
       }
+
+      // NOVA LINHA: Ordenar os lançamentos por data
+      lancamentos.sort((a, b) => a.data.localeCompare(b.data));
 
       const lancamentosMesAtual = lancamentos.filter(lancamento => {
         const dataLancamento = parseDate(lancamento.data);
