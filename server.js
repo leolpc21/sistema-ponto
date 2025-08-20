@@ -1,23 +1,34 @@
-// server.js (Código completo com cálculo em minutos)
+// server.js (NOVA ABORDAGEM: Dados organizados por Ano/Mês)
 const express = require('express');
-const mysql = require('mysql2/promise');
-const path = require('path');
-require('dotenv').config();
+const fs = require('fs/promises');
+const crypto = require('crypto');
 
 const app = express();
 const port = 3000;
-
-const dbConfig = {
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_DATABASE
-};
+const dataFile = 'data.json';
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
+// Funções utilitárias para ler e escrever no arquivo JSON
+async function readData() {
+  try {
+    const data = await fs.readFile(dataFile, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return {}; // Retorna um objeto vazio se o arquivo não existir
+    }
+    throw error;
+  }
+}
+
+async function writeData(data) {
+  await fs.writeFile(dataFile, JSON.stringify(data, null, 2), 'utf8');
+}
+
+// Funções para cálculo de tempo
 function timeToMinutes(time) {
   if (!time) return 0;
   const [hours, minutes] = time.split(':').map(Number);
@@ -32,41 +43,60 @@ function minutesToDecimalHours(minutes) {
 // Rota para lançar um novo ponto
 app.post('/api/lancamentos', async (req, res) => {
   try {
-    const connection = await mysql.createConnection(dbConfig);
+    const allData = await readData();
     const { data, horaInicio, horaSaida, tempoAlmoco, isFalta, isFeriado, isFerias } = req.body;
 
-    const [rows] = await connection.execute('SELECT id FROM lancamentos WHERE data = ?', [data]);
-    if (rows.length > 0) {
-      await connection.end();
-      return res.status(409).json({ error: 'Já existe um lançamento para esta data. Por favor, edite o lançamento existente.' });
+    const [ano, mes] = data.split('-').slice(0, 2);
+
+    // Cria a estrutura para o ano e mês se não existir
+    if (!allData[ano]) {
+      allData[ano] = {};
+    }
+    if (!allData[ano][mes]) {
+      allData[ano][mes] = [];
+    }
+
+    // Verifica se já existe um lançamento para esta data
+    const dataExists = allData[ano][mes].some(l => l.data === data);
+    if (dataExists) {
+      return res.status(409).json({ error: 'Já existe um lançamento para esta data.' });
     }
 
     let horasTrabalhadas;
-    let horasExtrasDiariasEmMinutos; // Nova variável em minutos
+    let horasExtrasDiariasEmMinutos;
 
     if (isFalta) {
-      horasTrabalhadas = 0;
-      horasExtrasDiariasEmMinutos = -8 * 60; // -480 minutos
+      horasTrabalhadas = "00:00";
+      horasExtrasDiariasEmMinutos = -8 * 60;
     } else if (isFeriado || isFerias) {
-      horasTrabalhadas = 0;
-      horasExtrasDiariasEmMinutos = 0;
+      horasTrabalhadas = "00:00";
+      horasExtrasDiariasEmMinutos = "00:00";
     } else {
       const inicioMinutos = timeToMinutes(horaInicio);
       const saidaMinutos = timeToMinutes(horaSaida);
       const almocoMinutos = timeToMinutes(tempoAlmoco);
       const totalMinutosTrabalhados = (saidaMinutos - inicioMinutos) - almocoMinutos;
       horasTrabalhadas = minutesToDecimalHours(totalMinutosTrabalhados);
-
       horasExtrasDiariasEmMinutos = totalMinutosTrabalhados - (8 * 60);
     }
 
-    const [result] = await connection.execute(
-      'INSERT INTO lancamentos (data, hora_inicio, hora_saida, tempo_almoco, horas_trabalhadas, horas_extras_diarias, is_falta, is_feriado, is_ferias) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [data, horaInicio || null, horaSaida || null, tempoAlmoco || null, horasTrabalhadas, horasExtrasDiariasEmMinutos, isFalta, isFeriado, isFerias]
-    );
+    const novoLancamento = {
+      id: crypto.randomBytes(16).toString('hex'),
+      data,
+      hora_inicio: horaInicio || null,
+      hora_saida: horaSaida || null,
+      tempo_almoco: tempoAlmoco || null,
+      horas_trabalhadas: horasTrabalhadas,
+      horas_extras_diarias: horasExtrasDiariasEmMinutos,
+      is_falta: isFalta,
+      is_feriado: isFeriado,
+      is_ferias: isFerias
+    };
 
-    await connection.end();
-    res.status(201).json({ id: result.insertId, message: 'Lançamento realizado com sucesso!' });
+    allData[ano][mes].push(novoLancamento);
+    await writeData(allData);
+
+    res.status(201).json({ id: novoLancamento.id, message: 'Lançamento realizado com sucesso!' });
 
   } catch (error) {
     console.error('Erro ao lançar ponto:', error);
@@ -74,29 +104,52 @@ app.post('/api/lancamentos', async (req, res) => {
   }
 });
 
+// Rota para obter todos os lançamentos
 app.get('/api/lancamentos', async (req, res) => {
   try {
-    const connection = await mysql.createConnection(dbConfig);
-    const [rows] = await connection.execute('SELECT * FROM lancamentos ORDER BY data DESC');
-    await connection.end();
-    res.json(rows);
+    const allData = await readData();
+    const lancamentos = Object.values(allData).flatMap(year => Object.values(year)).flat();
+    res.json(lancamentos);
   } catch (error) {
     console.error('Erro ao obter lançamentos:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
+// Rota para remover um lançamento
 app.delete('/api/lancamentos/:id', async (req, res) => {
   try {
-    const connection = await mysql.createConnection(dbConfig);
+    const allData = await readData();
     const { id } = req.params;
-    const [result] = await connection.execute('DELETE FROM lancamentos WHERE id = ?', [id]);
-    await connection.end();
 
-    if (result.affectedRows === 0) {
+    let lancamentoFound = false;
+
+    for (const ano in allData) {
+      for (const mes in allData[ano]) {
+        const lancamentosDoMes = allData[ano][mes];
+        const lancamentoIndex = lancamentosDoMes.findIndex(l => l.id === id);
+
+        if (lancamentoIndex !== -1) {
+          lancamentosDoMes.splice(lancamentoIndex, 1);
+          lancamentoFound = true;
+          // Limpar meses e anos vazios
+          if (lancamentosDoMes.length === 0) {
+            delete allData[ano][mes];
+          }
+          if (Object.keys(allData[ano]).length === 0) {
+            delete allData[ano];
+          }
+          break;
+        }
+      }
+      if (lancamentoFound) break;
+    }
+
+    if (!lancamentoFound) {
       return res.status(404).json({ message: 'Lançamento não encontrado.' });
     }
 
+    await writeData(allData);
     res.status(200).json({ message: 'Lançamento removido com sucesso!' });
   } catch (error) {
     console.error('Erro ao remover lançamento:', error);

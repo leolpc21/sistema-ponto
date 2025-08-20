@@ -1,4 +1,4 @@
-// public/app.js (Código completo com cálculo em minutos)
+// public/app.js (código CORRIGIDO para o seletor de anos)
 
 document.addEventListener('DOMContentLoaded', () => {
   const pontoForm = document.getElementById('pontoForm');
@@ -25,15 +25,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   dataInput.valueAsDate = new Date();
 
+  function parseDate(dateString) {
+    const [year, month, day] = dateString.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
+
   function formatDate(dateString) {
-    const date = new Date(dateString);
+    const date = parseDate(dateString);
     const day = String(date.getDate()).padStart(2, '0');
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const year = date.getFullYear();
     return `${day}/${month}/${year}`;
   }
 
-  // NOVA FUNÇÃO: Converte minutos inteiros para formato HH:MM
   function minutesToHHMM(totalMinutes) {
     const sign = totalMinutes < 0 ? '-' : '';
     const absMinutes = Math.abs(totalMinutes);
@@ -44,19 +48,15 @@ document.addEventListener('DOMContentLoaded', () => {
     return `${sign}${formattedHours}:${formattedMinutes}`;
   }
 
-  // Mantida apenas para a coluna de horas trabalhadas diárias
   function decimalHoursToHHMM(decimalHours) {
     if (typeof decimalHours !== 'number' || isNaN(decimalHours)) return '---';
-
     const totalMinutes = Math.abs(decimalHours * 60);
     const totalMinutesRounded = Math.round(totalMinutes);
     const hours = Math.floor(totalMinutesRounded / 60);
     const minutes = totalMinutesRounded % 60;
-
     const sign = decimalHours < 0 ? '-' : '';
     const formattedHours = String(hours).padStart(2, '0');
     const formattedMinutes = String(minutes).padStart(2, '0');
-
     return `${sign}${formattedHours}:${formattedMinutes}`;
   }
 
@@ -71,16 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
     mesSelector.appendChild(option);
   });
 
-  const anoAtualFull = new Date().getFullYear();
-  for (let i = anoAtualFull - 5; i <= anoAtualFull + 1; i++) {
-    const option = document.createElement('option');
-    option.value = i;
-    option.textContent = i;
-    anoSelector.appendChild(option);
-  }
-
   mesSelector.value = mesAtual;
-  anoSelector.value = anoAtual;
 
   mesSelector.addEventListener('change', () => {
     mesAtual = parseInt(mesSelector.value);
@@ -101,7 +92,6 @@ document.addEventListener('DOMContentLoaded', () => {
         checkbox.checked = false;
       }
     });
-
     const isDisabled = checkboxAtual.checked;
     horaInicioInput.disabled = isDisabled;
     horaSaidaInput.disabled = isDisabled;
@@ -177,6 +167,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const response = await fetch(`/api/lancamentos/${id}`, {
         method: 'DELETE',
       });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message);
+      }
       const result = await response.json();
       alert(result.message);
       carregarLancamentos();
@@ -204,28 +198,32 @@ document.addEventListener('DOMContentLoaded', () => {
       const response = await fetch('/api/lancamentos');
       const lancamentos = await response.json();
 
+      // Lógica para popular o seletor de anos
+      const anosExistentes = [...new Set(lancamentos.map(l => parseDate(l.data).getFullYear()))].sort((a, b) => a - b);
+
+      const anosParaExibir = anosExistentes.length > 0 ? anosExistentes : [anoAtual];
+
+      anoSelector.innerHTML = ''; // Limpa as opções existentes
+      anosParaExibir.forEach(ano => {
+        const option = document.createElement('option');
+        option.value = ano;
+        option.textContent = ano;
+        anoSelector.appendChild(option);
+      });
+
+      if (!anosExistentes.includes(anoAtual)) {
+        anoSelector.value = anosParaExibir[anosParaExibir.length - 1];
+        anoAtual = parseInt(anoSelector.value);
+      } else {
+        anoSelector.value = anoAtual;
+      }
+
       const lancamentosMesAtual = lancamentos.filter(lancamento => {
-        const dataLancamento = new Date(lancamento.data);
+        const dataLancamento = parseDate(lancamento.data);
         return dataLancamento.getMonth() === mesAtual && dataLancamento.getFullYear() === anoAtual;
       });
 
-      const lancamentosCumulativos = lancamentos.filter(lancamento => {
-        const dataLancamento = new Date(lancamento.data);
-        const dataLimite = new Date(anoAtual, mesAtual + 1, 0);
-        return dataLancamento <= dataLimite;
-      });
-
       let totalHorasMes = 0;
-      let totalExtrasCumulativoEmMinutos = 0; // Agora em minutos
-
-      lancamentosCumulativos.forEach(lancamento => {
-        const horasExtrasDiariasEmMinutos = parseInt(lancamento.horas_extras_diarias);
-
-        if (!isNaN(horasExtrasDiariasEmMinutos)) {
-          totalExtrasCumulativoEmMinutos += horasExtrasDiariasEmMinutos;
-        }
-      });
-
       lancamentosMesAtual.forEach(lancamento => {
         const horasTrabalhadasDecimal = parseFloat(lancamento.horas_trabalhadas);
         if (!isNaN(horasTrabalhadasDecimal)) {
@@ -233,9 +231,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
 
+      let totalExtrasCumulativoEmMinutos = 0;
+      lancamentos.forEach(lancamento => {
+        const horasExtrasDiariasEmMinutos = parseInt(lancamento.horas_extras_diarias);
+        if (!isNaN(horasExtrasDiariasEmMinutos)) {
+          totalExtrasCumulativoEmMinutos += horasExtrasDiariasEmMinutos;
+        }
+      });
+
       resumoTitulo.textContent = `Resumo de ${meses[mesAtual]} de ${anoAtual}`;
       horasTotaisSpan.textContent = decimalHoursToHHMM(totalHorasMes);
-      horasExtrasSpan.textContent = minutesToHHMM(totalExtrasCumulativoEmMinutos); // Usa a nova função
+      horasExtrasSpan.textContent = minutesToHHMM(totalExtrasCumulativoEmMinutos);
 
       tabelaBody.innerHTML = '';
       if (lancamentosMesAtual.length === 0) {
