@@ -1,0 +1,44 @@
+body {
+  background-color: #f8f9fa;
+}
+
+.container {
+  padding: 2rem;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Espaçamento entre as seções */
+.ponto-form-container {
+  margin-bottom: 3rem;
+}
+
+.historico-container {
+  margin-top: 3rem;
+}
+
+/* Centraliza o título */
+h1 {
+  font-weight: 300;
+}
+
+/* Estilo para os botões de ação na tabela */
+.btn-acoes {
+  display: flex;
+  gap: 5px;
+  /* Espaço entre os botões */
+  justify-content: center;
+}
+
+.btn-acoes .btn {
+  padding: 0.25rem 0.5rem;
+  /* Botões menores */
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.form-check-inline {
+  margin-right: 3rem;
+  /* Ajuste este valor para o espaçamento desejado */
+}
