@@ -42,3 +42,8 @@ h1 {
   margin-right: 3rem;
   /* Ajuste este valor para o espaçamento desejado */
 }
+
+#horasExtras {
+  color: #dc3545;
+  font-weight: bold;
+}
