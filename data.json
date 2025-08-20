@@ -115,7 +115,7 @@
         "hora_inicio": null,
         "hora_saida": null,
         "tempo_almoco": null,
-        "horas_trabalhadas": "00:00:00",
+        "horas_trabalhadas": "00:00",
         "horas_extras_diarias": 0,
         "is_falta": false,
         "is_feriado": true,
