@@ -157,6 +157,74 @@ app.delete('/api/lancamentos/:id', async (req, res) => {
   }
 });
 
+// Rota para editar um lançamento
+app.put('/api/lancamentos/:id', async (req, res) => {
+  try {
+    const allData = await readData();
+    const { id } = req.params;
+    const { data, horaInicio, horaSaida, tempoAlmoco, isFalta, isFeriado, isFerias } = req.body;
+
+    let updated = false;
+
+    // Itera sobre a estrutura de dados para encontrar e atualizar o lançamento
+    for (const ano in allData) {
+      for (const mes in allData[ano]) {
+        const lancamentosDoMes = allData[ano][mes];
+        const lancamentoIndex = lancamentosDoMes.findIndex(l => l.id === id);
+
+        if (lancamentoIndex !== -1) {
+          const lancamentoToUpdate = lancamentosDoMes[lancamentoIndex];
+
+          // Recalcula as horas com base nos novos dados
+          let horasTrabalhadas;
+          let horasExtrasDiariasEmMinutos;
+
+          if (isFalta) {
+            horasTrabalhadas = 0;
+            horasExtrasDiariasEmMinutos = -8 * 60;
+          } else if (isFeriado || isFerias) {
+            horasTrabalhadas = 0;
+            horasExtrasDiariasEmMinutos = 0;
+          } else {
+            const inicioMinutos = timeToMinutes(horaInicio);
+            const saidaMinutos = timeToMinutes(horaSaida);
+            const almocoMinutos = timeToMinutes(tempoAlmoco);
+            const totalMinutosTrabalhados = (saidaMinutos - inicioMinutos) - almocoMinutos;
+            horasTrabalhadas = minutesToDecimalHours(totalMinutosTrabalhados);
+            horasExtrasDiariasEmMinutos = totalMinutosTrabalhados - (8 * 60);
+          }
+
+          // Atualiza as propriedades do objeto
+          lancamentoToUpdate.data = data;
+          lancamentoToUpdate.hora_inicio = horaInicio || null;
+          lancamentoToUpdate.hora_saida = horaSaida || null;
+          lancamentoToUpdate.tempo_almoco = tempoAlmoco || null;
+          lancamentoToUpdate.horas_trabalhadas = horasTrabalhadas;
+          lancamentoToUpdate.horas_extras_diarias = horasExtrasDiariasEmMinutos;
+          lancamentoToUpdate.is_falta = isFalta;
+          lancamentoToUpdate.is_feriado = isFeriado;
+          lancamentoToUpdate.is_ferias = isFerias;
+
+          updated = true;
+          break;
+        }
+      }
+      if (updated) break;
+    }
+
+    if (!updated) {
+      return res.status(404).json({ message: 'Lançamento não encontrado.' });
+    }
+
+    await writeData(allData);
+    res.status(200).json({ message: 'Lançamento atualizado com sucesso!' });
+
+  } catch (error) {
+    console.error('Erro ao editar lançamento:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Servidor rodando em http://localhost:${port}`);
 });
